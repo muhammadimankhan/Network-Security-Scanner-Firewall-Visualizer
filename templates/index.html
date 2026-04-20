@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Security Scanner & Firewall Visualizer</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f9; color: #333; margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: auto; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h1, h2 { color: #2c3e50; }
+        .form-group { margin-bottom: 15px; display: inline-block; margin-right: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; }
+        input, select, button { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #3498db; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #2980b9; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background-color: #2c3e50; color: white; }
+        
+        /* Firewall Visualizer Styles */
+        #visualizer-board { background: #e8eaed; padding: 20px; border-radius: 8px; margin-top: 15px; min-height: 100px; text-align: center; }
+        .packet { display: inline-block; padding: 10px 20px; border-radius: 20px; color: white; font-weight: bold; margin-bottom: 10px; }
+        .status-allow { background-color: #2ecc71; }
+        .status-deny { background-color: #e74c3c; }
+        .status-pending { background-color: #f39c12; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Network Security Scanner & Firewall Visualizer</h1>
+
+    <div class="card">
+        <h2>1. Active Network Scanner</h2>
+        <div class="form-group">
+            <label>Target IP / Hostname</label>
+            <input type="text" id="targetIp" placeholder="e.g., 127.0.0.1" value="127.0.0.1">
+        </div>
+        <div class="form-group">
+            <label>Scan Type</label>
+            <select id="scanType">
+                <option value="TCP SYN">TCP SYN Scan</option>
+                <option value="Full Connect">TCP Full Connect</option>
+                <option value="UDP">UDP Scan</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <button onclick="startScan()" id="scanBtn">Start Scan</button>
+        </div>
+        <p id="scanStatus" style="color: #7f8c8d; font-style: italic;"></p>
+
+        <table id="resultsTable">
+            <thead>
+                <tr>
+                    <th>Target IP</th>
+                    <th>Port</th>
+                    <th>Protocol</th>
+                    <th>Service</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="resultsBody">
+                </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>2. Firewall Rule Simulator</h2>
+        
+        <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+            <h3>Add Rule</h3>
+            <div class="form-group">
+                <label>Target Port (or 'Any')</label>
+                <input type="text" id="fwPort" placeholder="e.g., 80" value="80">
+            </div>
+            <div class="form-group">
+                <label>Protocol</label>
+                <select id="fwProto">
+                    <option value="ANY">Any</option>
+                    <option value="TCP">TCP</option>
+                    <option value="UDP">UDP</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Action</label>
+                <select id="fwAction">
+                    <option value="ALLOW">Allow</option>
+                    <option value="DENY">Deny</option>
+                </select>
+            </div>
+            <button onclick="addRule()" style="background-color: #27ae60;">Add Rule</button>
+        </div>
+
+        <table id="rulesTable">
+            <thead>
+                <tr>
+                    <th>Priority</th>
+                    <th>Port</th>
+                    <th>Protocol</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="rulesBody">
+                </tbody>
+        </table>
+
+        <h3>Traffic Visualizer</h3>
+        <div class="form-group">
+            <label>Test Packet Port</label>
+            <input type="number" id="testPort" value="80">
+        </div>
+        <div class="form-group">
+            <label>Test Packet Protocol</label>
+            <select id="testProto">
+                <option value="TCP">TCP</option>
+                <option value="UDP">UDP</option>
+            </select>
+        </div>
+        <button onclick="simulateTraffic()" style="background-color: #8e44ad;">Simulate Incoming Traffic</button>
+
+        <div id="visualizer-board">
+            <div id="packetDisplay" class="packet status-pending" style="display:none;">
+                Incoming Packet -> Evaluation Pending
+            </div>
+            <p id="evaluationLog" style="margin-top: 15px; font-weight: bold;"></p>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- Scanning Logic ---
+    async function startScan() {
+        const ip = document.getElementById('targetIp').value;
+        const scanType = document.getElementById('scanType').value;
+        const statusEl = document.getElementById('scanStatus');
+        const tbody = document.getElementById('resultsBody');
+        
+        if(!ip) { alert("Please enter an IP"); return; }
+
+        statusEl.innerText = "Scanning in progress... This may take a minute.";
+        document.getElementById('scanBtn').disabled = true;
+        tbody.innerHTML = "";
+
+        try {
+            const response = await fetch('/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip, scan_type: scanType })
+            });
+            const data = await response.json();
+
+            if(data.error) {
+                statusEl.innerText = "Error: " + data.error;
+            } else {
+                statusEl.innerText = "Scan complete. " + data.results.length + " open ports found.";
+                data.results.forEach(res => {
+                    tbody.innerHTML += `<tr>
+                        <td>${res.ip}</td>
+                        <td>${res.port}</td>
+                        <td>${res.protocol}</td>
+                        <td>${res.service}</td>
+                        <td style="color:green; font-weight:bold;">${res.status}</td>
+                    </tr>`;
+                });
+            }
+        } catch(e) {
+            statusEl.innerText = "Failed to connect to the backend.";
+        }
+        document.getElementById('scanBtn').disabled = false;
+    }
+
+    // --- Firewall Logic ---
+    let firewallRules = [];
+
+    function addRule() {
+        const port = document.getElementById('fwPort').value.toUpperCase();
+        const proto = document.getElementById('fwProto').value;
+        const action = document.getElementById('fwAction').value;
+        
+        firewallRules.push({ port, proto, action });
+        updateRulesTable();
+    }
+
+    function updateRulesTable() {
+        const tbody = document.getElementById('rulesBody');
+        tbody.innerHTML = "";
+        firewallRules.forEach((rule, index) => {
+            const color = rule.action === 'ALLOW' ? 'green' : 'red';
+            tbody.innerHTML += `<tr>
+                <td>${index + 1}</td>
+                <td>${rule.port}</td>
+                <td>${rule.proto}</td>
+                <td style="color:${color}; font-weight:bold;">${rule.action}</td>
+            </tr>`;
+        });
+    }
+
+    function simulateTraffic() {
+        const tPort = document.getElementById('testPort').value;
+        const tProto = document.getElementById('testProto').value;
+        
+        const packet = document.getElementById('packetDisplay');
+        const log = document.getElementById('evaluationLog');
+        
+        packet.style.display = 'inline-block';
+        packet.className = 'packet status-pending';
+        packet.innerText = `Testing Packet: Port ${tPort} over ${tProto}...`;
+        
+        // Default action is DENY if no rules match
+        let finalAction = 'DENY';
+        let matchedRuleIndex = -1;
+
+        // Evaluate top-down chaining logic
+        for(let i = 0; i < firewallRules.length; i++) {
+            const r = firewallRules[i];
+            const portMatch = (r.port === 'ANY' || r.port === tPort);
+            const protoMatch = (r.proto === 'ANY' || r.proto === tProto);
+            
+            if(portMatch && protoMatch) {
+                finalAction = r.action;
+                matchedRuleIndex = i + 1;
+                break; // Stop at first match (Priority Based)
+            }
+        }
+
+        // Simulate network delay for visualization
+        setTimeout(() => {
+            if(finalAction === 'ALLOW') {
+                packet.className = 'packet status-allow';
+                packet.innerText = `Traffic ALLOWED`;
+                log.innerHTML = matchedRuleIndex !== -1 
+                    ? `Packet matched Rule #${matchedRuleIndex} and was allowed through.` 
+                    : `No rules matched. Default policy allowed (Warning: Insecure!).`;
+            } else {
+                packet.className = 'packet status-deny';
+                packet.innerText = `Traffic BLOCKED`;
+                log.innerHTML = matchedRuleIndex !== -1 
+                    ? `Packet matched Rule #${matchedRuleIndex} and was dropped.` 
+                    : `No rules matched. Packet dropped by Default Deny policy.`;
+            }
+        }, 1000);
+    }
+</script>
+
+</body>
+</html>
